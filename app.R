@@ -9,11 +9,9 @@ ui <- function(request) {dashboardPage(
     ## Sidebar content
     dashboardSidebar(
 
-        textInput(inputId="group", label="Group", value = "", width = NULL, placeholder = NULL),
-        textInput(inputId="projectid", label="ProjectID", value = "", width = NULL, placeholder = NULL),
-        fileInput(inputId="countfile",label="CountFile",multiple=FALSE,accept=NULL,buttonLabel = "Browse...", placeholder = "No file selected"),
+        fileInput(inputId="countfile",label="Upload feature counts table.",multiple=FALSE,accept=NULL,buttonLabel = "Browse...", placeholder = "No file selected"),
         actionButton("submitinput", "Retrieve dataset"),
-        fileInput(inputId="file1", label="UserFile", multiple = FALSE, accept = NULL, width = NULL,buttonLabel = "Browse...", placeholder = "No file selected"),
+        fileInput(inputId="file1", label="Upload gene list.", multiple = FALSE, accept = NULL, width = NULL,buttonLabel = "Browse...", placeholder = "No file selected"),
         textOutput("fileDescription"),
         bookmarkButton()
         ),
@@ -28,14 +26,13 @@ ui <- function(request) {dashboardPage(
 
 server <- function(input, output, session) {
     
-    output$walkThrough<-renderUI(HTML("<ul><li>1.Complete the Group and ProjectID fields (currently only for Boehm department) OR provide path to feature counts count table to CountFile. Click on retrieve dataset. Your data will appear in the InputData tab.</li><li>2.Provide a UserFile with ensembl gene IDs to analyze.</li><li>3.If necessary, relabel sample IDs to desired plotting IDs in the corresponding interactive sampleInfo table column, in the InputData tab. Provide group information in the group column.Click on Run analysis. Your results will appear in the corresponding tabs.</li><li>The order of providing the information matters!</li></ul>"))
+    output$walkThrough<-renderUI(HTML("<ul><li>1.Upload feature counts count table. Click on retrieve dataset. Your data will appear in the InputData tab.</li><li>2.Provide a UserFile with ensembl gene IDs to analyze.</li><li>3.If necessary, relabel sample IDs to desired plotting IDs in the corresponding interactive sampleInfo table column, in the InputData tab. Provide group information in the group column.Click on Run analysis. Your results will appear in the corresponding tabs.</li><li>The order of providing the information matters!</li></ul>"))
     output$FAQ<-renderText("Currently supported organisms are Homo sapiens, Mus musculus, Danio rerio, Drosophila melanogaster.\n Merging data from multiple datasets or batch effect removal are currenlty not supported.\n For questions, bug reports or feature requests, contact sikora@ie-freiburg.mpg.de.\n For reporting issues or pull requests on GitHub, go to https://github.com/katsikora/bulkRNAseq_shiny_app .")
     
     output$fileDescription<-renderText("UserFile: Please provide a one-column headerless txt file with ensemble gene IDs you would like to analyze.\n CountFile: Please provide an integer count table with ensembl gene IDs as rownames and sample IDs as colnames.")
 
  
 ##########################read/load processed data from a database##################
-    #Rlib="/data/manke/repository/scripts/DNA_methylation/Rlibs.3.3.1"
     library("data.table",lib.loc=Rlib)
     library("limma",lib.loc=Rlib)
     library("edgeR",lib.loc=Rlib)
@@ -44,8 +41,7 @@ server <- function(input, output, session) {
     library(RColorBrewer,lib.loc=Rlib)
     library(ggplot2,lib.loc=Rlib)
     library(reshape2,lib.loc=Rlib)
-    library("biomaRt",lib.loc=Rlib)#,lib.loc=Rlib
-    #output$debug<-renderPrint({capture.output(library("biomaRt",lib.loc=Rlib,logical.return=TRUE))})#,logical.return=TRUE#,lib.loc=Rlib
+    library("biomaRt",lib.loc=Rlib)
 
     output$sessionInfo <- renderPrint({capture.output(sessionInfo())})
 
@@ -92,26 +88,16 @@ server <- function(input, output, session) {
 
     ##query database using group/projectid fields
 
-    dbFile<-read.table("/data/manke/group/shiny/sikora/aux_files/RNAseq.DB.csv",header=TRUE,sep="\t",quote="",as.is=TRUE)
+    #dbFile<-read.table("/data/manke/group/shiny/sikora/aux_files/RNAseq.DB.csv",header=TRUE,sep="\t",quote="",as.is=TRUE)
 
     observeEvent(input$submitinput, {
         
-        if((input$group!="")&(input$projectid!="")){
-            inGroup<-isolate(input$group)
-            inProjectID<-isolate(input$projectid)
-  
-            datPath<-dbFile$PathToData[(dbFile$Group %in% inGroup) & (dbFile$ProjectID %in% inProjectID)]
-            print(datPath)
-            ##get genome and annotation version from a featureCounts log file
-            logPath<-dbFile$PathToLog[(dbFile$Group %in% inGroup) & (dbFile$ProjectID %in% inProjectID)]
-            org<-sub("_ensembl/.+.bam","",sub("/package.+/organisms/","",system(paste0('grep -m 1 \"/data/repository/organisms\" ',logPath),intern=TRUE)))
-            output$organism<-renderText(paste("Detected genome is ",org))
-            annot<-sub("/genes.gtf.+.bam","",sub("/package.+/data/repository/organisms/.+/ensembl/","",system(paste0('grep -m 1 \"/data/repository/organisms\" ',logPath),intern=TRUE)))}
-        else if (!is.null(input$countfile)){
+        
+       if (!is.null(input$countfile)){
              countFile<-isolate(input$countfile)
              datPath<-countFile$datapath  
              print(datPath)
-             annot<-"not available"}
+             }
         inDr1<-read.table(datPath,header=TRUE,sep="\t",as.is=TRUE,quote="",nrows=1)
         inDr2<-suppressWarnings(fread(datPath,header=TRUE,sep="\t",nrows=1))
         if(ncol(inDr1)==ncol(inDr2)){cnv<-colnames(inDr1)
@@ -119,12 +105,10 @@ server <- function(input, output, session) {
         inDat<-fread(input=datPath,header=FALSE,sep="\t",skip=1)
         colnames(inDat)<-cnv
         ####handle gencode####
-        if(grepl("gencode",annot)){annot<-paste("gencode",gsub("/package.+/gencode/","",annot),sep=" ")
-                                   inDat$GeneID<-gsub("\\.[0-9]+","",inDat$GeneID)}else{annot<-paste("ensembl",annot,sep=" ")}
+        if(grepl("\\.[0-9]{1,2}",inDat$GeneID[1])){inDat$GeneID<-gsub("\\.[0-9]+","",inDat$GeneID)}
         ##render the head
         output$datHead<-renderTable(head(inDat),caption="Original unnormalized input data",caption.placement = getOption("xtable.caption.placement", "top"))
                           
-        output$annotation<-renderText(paste("Detected annotation is ",annot))
         ##or grep for organism from ensembl gene ids:
         emv<-c("ENSDARG"="drerio","ENSMUSG"="mmusculus","ENSG"="hsapiens","FBgn"="dmelanogaster")
         ems<-emv[grep(gsub("[0-9].+","",inDat$GeneID[5]),names(emv))]
@@ -228,8 +212,7 @@ server <- function(input, output, session) {
                                                           fluidRow(
                                                               box(renderText("Please complete missing sample information. Plotting ID will be used to replace Sample ID on plots, Group will be used to construct a design table. Any samples with missing annotation will be removed from analysis.")),
                                                               tableOutput("inTabHead"),
-                                                              box(textOutput("organism"),
-                                                                  textOutput("annotation"))
+                                                              box(textOutput("organism"))
                                                                   ) 
                                                               )
                                                           ),
