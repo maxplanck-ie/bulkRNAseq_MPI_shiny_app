@@ -188,6 +188,13 @@ server <- function(input, output, session) {
         
 
         },ignoreInit=TRUE)#end of observe input$submitinput
+    
+    output$get_vignette <- downloadHandler(
+      filename = "bulkRNAseq_app_vignette.html",
+      content = function(con) {
+        file.copy(from="/data/manke/sikora/shiny_apps/bulkRNAseq_docs/bulkRNAseq_docs.html", to=con, overwrite =TRUE)
+      }
+    )
    
     
 ###################################################################################   
@@ -197,7 +204,8 @@ server <- function(input, output, session) {
     output$resultPanels<-renderUI({myTabs<-list(tabPanel(title="WalkThrough",
                                                       fluidPage(
                                                           box(title="Walkthrough",uiOutput("walkThrough")),
-                                                          box(title="Miscellaneous information",textOutput("FAQ"))                                                          
+                                                          box(title="Miscellaneous information",textOutput("FAQ")),
+                                                          downloadButton("get_vignette", label = "Download vignette html")
                                                                )
                                                           ),
                                                   tabPanel(title="InputData",
