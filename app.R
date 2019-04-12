@@ -141,6 +141,7 @@ server <- function(input, output, session) {
         observeEvent(input$file1,{
         inFile<-isolate(input$file1)
         inTab<-read.table(inFile$datapath, header = FALSE,sep="\t",quote="",as.is=TRUE)
+        if(grepl("\\.[0-9]{1,2}",inTab[1,1])){inTab[,1]<-gsub("\\.[0-9]+","",inTab[,1])}
         output$inTabHead<-renderTable(head(inTab),caption="Input gene IDs",caption.placement = getOption("xtable.caption.placement", "top"))
     
             observeEvent(input$savetable, {
