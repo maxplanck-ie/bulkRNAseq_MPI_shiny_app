@@ -10,14 +10,12 @@ ui <- function(request) {dashboardPage(
     dashboardSidebar(
 
         fileInput(inputId="countfile",label="Upload feature counts table.",multiple=FALSE,accept=NULL,buttonLabel = "Browse...", placeholder = "No file selected"),
-        actionButton("submitinput", "Retrieve dataset"),
-        fileInput(inputId="file1", label="Upload gene list.", multiple = FALSE, accept = NULL, width = NULL,buttonLabel = "Browse...", placeholder = "No file selected"),
-        textOutput("fileDescription"),
-        bookmarkButton()
+        #fileInput(inputId="file1", label="Upload gene list.", multiple = FALSE, accept = NULL, width = NULL,buttonLabel = "Browse...", placeholder = "No file selected"),
+        textOutput("fileDescription")
         ),
         
     dashboardBody(
-        h2("Bulk RNAseq analysis"),
+        h2("RNAseq counts visualization"),
         uiOutput("resultPanels")
                
     )
@@ -27,9 +25,11 @@ ui <- function(request) {dashboardPage(
 server <- function(input, output, session) {
     
     output$walkThrough<-renderUI(HTML("<ul><li>1.Upload feature counts count table. Click on retrieve dataset. Your data will appear in the InputData tab.</li><li>2.Provide a UserFile with ensembl gene IDs to analyze.</li><li>3.If necessary, relabel sample IDs to desired plotting IDs in the corresponding interactive sampleInfo table column, in the InputData tab. Provide group information in the group column.Click on Run analysis. Your results will appear in the corresponding tabs.</li><li>The order of providing the information matters!</li></ul>"))
-    output$FAQ<-renderText("Currently supported organisms are Homo sapiens, Mus musculus, Danio rerio, Drosophila melanogaster.\n Merging data from multiple datasets or batch effect removal are currenlty not supported.\n For questions, bug reports or feature requests, contact sikora@ie-freiburg.mpg.de.\n For reporting issues or pull requests on GitHub, go to https://github.com/katsikora/bulkRNAseq_shiny_app .")
+    output$FAQ<-renderText("Currently supported organisms are Homo sapiens, Mus musculus, Danio rerio, Drosophila melanogaster.\n Merging data from multiple datasets or batch effect removal are currenlty not supported.\n For questions, bug reports or feature requests, contact sikora@ie-freiburg.mpg.de.\n For reporting issues or pull requests on GitHub, go to https://github.com/maxplanck-ie/bulkRNAseq_MPI_shiny_app .")
     
-    output$fileDescription<-renderText("UserFile: Please provide a one-column headerless txt file with ensemble gene IDs you would like to analyze.\n CountFile: Please provide an integer count table with ensembl gene IDs as rownames and sample IDs as colnames.")
+    output$fileDescription<-renderText("Please provide an integer count table with ensembl gene IDs as rownames and sample IDs as colnames.")
+    
+    #UserFile: Please provide a one-column headerless txt file with ensemble gene IDs you would like to analyze.\n 
 
  
 ##########################read/load processed data from a database##################
@@ -84,13 +84,7 @@ server <- function(input, output, session) {
     }
 
 
-
-
-    ##query database using group/projectid fields
-
-    #dbFile<-read.table("/data/manke/group/shiny/sikora/aux_files/RNAseq.DB.csv",header=TRUE,sep="\t",quote="",as.is=TRUE)
-
-    observeEvent(input$submitinput, {
+    observeEvent(input$countfile, {
         
         
        if (!is.null(input$countfile)){
@@ -161,6 +155,7 @@ server <- function(input, output, session) {
                 v <- voom(dge,design,plot=FALSE)
                 normCounts<-v$E
                 selNormCounts<-normCounts[match(inTab$V1,rownames(normCounts)),]
+                selNormCounts<-selNormCounts[complete.cases(selNormCounts),]
                 output$NormCounts<-renderTable(selNormCounts,include.rownames=TRUE,caption="Normalized Log2CPM",caption.placement = getOption("xtable.caption.placement", "top"))
                 output$downloadNormCounts <- downloadHandler(filename = "NormalizedLog2CPM.xls",content=function(file) {write.table(selNormCounts,file,row.names = TRUE,sep="\t",quote=FALSE,dec = ",")})
                 ##annotate with external gene symbol
@@ -195,62 +190,65 @@ server <- function(input, output, session) {
         file.copy(from="/data/manke/sikora/shiny_apps/bulkRNAseq_docs/bulkRNAseq_docs.html", to=con, overwrite =TRUE)
       }
     )
+    
+    output$downloadSessionInfo <- downloadHandler(
+      filename = "sessionInfo.txt",
+      content = function(con) {
+        sink(con)
+        print(sessionInfo())
+        sink()
+      }
+    )
    
     
 ###################################################################################   
     
 
        
-    output$resultPanels<-renderUI({myTabs<-list(tabPanel(title="WalkThrough",
+    output$resultPanels<-renderUI({myTabs<-list(tabPanel(title="Walkthrough",
                                                       fluidPage(
                                                           box(title="Walkthrough",uiOutput("walkThrough")),
                                                           box(title="Miscellaneous information",textOutput("FAQ")),
                                                           downloadButton("get_vignette", label = "Download vignette html")
                                                                )
                                                           ),
-                                                  tabPanel(title="InputData",
+                                                  tabPanel(title="Input Annotation",
                                                       fluidPage(
-                                                          fluidRow(
-                                                              tableOutput("datHead"),
-                                                              tableOutput("countDatHead")
-                                                                   ),
                                                           #fluidRow(
-                                                              rHandsontableOutput("hot"),
-                                                              actionButton(inputId="savetable",label="Run analysis"),
-                                                            #      ),
+                                                              #tableOutput("datHead"),
+                                                              #tableOutput("countDatHead")
+                                                           #        ),
                                                           fluidRow(
-                                                              box(renderText("Please complete missing sample information. Plotting ID will be used to replace Sample ID on plots, Group will be used to construct a design table. Any samples with missing annotation will be removed from analysis.")),
-                                                              tableOutput("inTabHead"),
-                                                              box(textOutput("organism"))
+                                                            box(title="Sample description table",rHandsontableOutput("hot",width=800),width=8)
+                                                              
+                                                                  ),
+                                                          fluidRow(
+                                                            actionButton(inputId="savetable",label="Run analysis",width="200px",style = "color: black;background-color:  	 	#6495ED")
+                                                          ),
+                                                          fluidRow(
+                                                              box(renderText("Please complete missing sample information. Plotting ID will be used to replace Sample ID on plots, Group will be used to construct a design table. Any samples with missing annotation will be removed from analysis."))
                                                                   ) 
                                                               )
                                                           ),
-                                                   tabPanel(title="NormCounts.Table",
+                                                  tabPanel(title="Data Visualization",
                                                       fluidPage(
-                                                          tableOutput("NormCounts"),
-                                                          box(title="Method Description",renderText("Depth-normalized gene expression counts are listed for selected genes as log2 counts per million.")),
-                                                          downloadButton("downloadNormCounts", label="Download Normalized Counts")
-                                                               )
+                                                        fluidRow(
+                                                          box(title="Heatmap",plotOutput("heatmap"),height=600),
+                                                          box(title="Jitter plot",plotOutput("barplot"),height=600)
+                                                        ),
+                                                        fluidRow(
+                                                          box(title="Gene list",fileInput(inputId="file1", label="Upload gene list.", multiple = FALSE, accept = NULL, width = NULL,buttonLabel = "Browse...", placeholder = "No file selected")),
+                                                          box(title = "Plot controls",selectInput("XlabelChoiceHeatmap", "Gene label",choices=c("GeneID","GeneSymbol"),selected="GeneID"))),
+                                                        fluidRow(
+                                                          box(title="Method Description",renderText("Genewise Log2 counts per million were mean-centered and scaled across the samples. Average linkage clustering on euclidean distances was performed.")),
+                                                          box(title="Method Description",renderText("Mean Log2 counts per million are plotted with standard deviation as error bars.")))
+                                                               ),
+                                                      downloadButton("downloadNormCounts", label="Download Normalized Counts",style = "color: black;background-color: #6495ED")
                                                           ),
-                                                   tabPanel(title="NormCounts.Heatmap",
+                                                  tabPanel(title="Session Info",
                                                       fluidPage(
-                                                          box(plotOutput("heatmap")),
-                                                          box(title = "Plot controls",selectInput("XlabelChoiceHeatmap", "Gene label",choices=c("GeneID","GeneSymbol"),selected="GeneID")),
-                                                          box(title="Method Description",renderText("Genewise Log2 counts per million were mean-centered and scaled across the samples. Average linkage clustering on euclidean distances was performed."))
-                                                               )
-                                                          ),
-                                                  tabPanel(title="NormCounts.Barplot",
-                                                      fluidPage(
-                                                          box(plotOutput("barplot")),
-                                                          box(title = "Plot controls",selectInput("XlabelChoiceBarplot", "Gene label",choices=c("GeneID","GeneSymbol"),selected="GeneID")),
-                                                          box(title="Method Description",renderText("Mean Log2 counts per million are plotted with standard deviation as error bars."))
-                                                          
-                                                               )
-                                                          ),
-                                                  tabPanel(title="sessionInfo",
-                                                      fluidPage(
-                                                          verbatimTextOutput("sessionInfo")
-                                                          #verbatimTextOutput("debug")                                                          
+                                                          verbatimTextOutput("sessionInfo"),
+                                                          downloadButton(outputId="downloadSessionInfo", label="Download session info")
                                                                )
                                                           )
 
@@ -261,4 +259,4 @@ server <- function(input, output, session) {
 
 }
 
-shinyApp(ui, server,enableBookmarking="url")
+shinyApp(ui, server)
