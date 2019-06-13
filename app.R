@@ -12,6 +12,7 @@ ui <- function(request) {dashboardPage(
         fileInput(inputId="countfile",label="Upload feature counts table.",multiple=FALSE,accept=NULL,buttonLabel = "Browse...", placeholder = "No file selected"),
         #fileInput(inputId="file1", label="Upload gene list.", multiple = FALSE, accept = NULL, width = NULL,buttonLabel = "Browse...", placeholder = "No file selected"),
         textOutput("fileDescription")
+        #actionButton("submitdataset","Submit dataset")
         ),
         
     dashboardBody(
@@ -44,60 +45,52 @@ server <- function(input, output, session) {
     library("biomaRt",lib.loc=Rlib)
 
     output$sessionInfo <- renderPrint({capture.output(sessionInfo())})
-
-    ##barplots mean +/- stdev
-    summarySE <- function(data=NULL, measurevar, groupvars=NULL, na.rm=FALSE,
-                      conf.interval=.95, .drop=TRUE) {
-        library(plyr,lib.loc=Rlib)
-
-    # New version of length which can handle NA's: if na.rm==T, don't count them
-        length2 <- function (x, na.rm=FALSE) {
-            if (na.rm) sum(!is.na(x))
-            else       length(x)
-        }
-
-        # This does the summary. For each group's data frame, return a vector with
-        # N, mean, and sd
-        datac <- ddply(data, groupvars, .drop=.drop,
-          .fun = function(xx, col) {
-            c(N    = length2(xx[[col]], na.rm=na.rm),
-              mean = mean   (xx[[col]], na.rm=na.rm),
-              sd   = sd     (xx[[col]], na.rm=na.rm)
-            )
-          },
-          measurevar
-        )
-
-        # Rename the "mean" column    
-        datac <- rename(datac, c("mean" = measurevar))
-
-        datac$se <- datac$sd / sqrt(datac$N)  # Calculate standard error of the mean
-
-        # Confidence interval multiplier for standard error
-        # Calculate t-statistic for confidence interval: 
-        # e.g., if conf.interval is .95, use .975 (above/below), and use df=N-1
-        ciMult <- qt(conf.interval/2 + .5, datac$N-1)
-        datac$ci <- datac$se * ciMult
-        datac$ci.sd <- datac$sd * ciMult
-
-        return(datac)
+    ######################################################################################
+    is.wholenumber <-function(x, tol = .Machine$double.eps^0.5)  abs(x - round(x)) < tol
+    
+    check_counts<-function(counttable){
+      if (all(is.character(counttable$GeneID),sum(grepl("[A-Z].+",counttable$GeneID,ignore.case=TRUE))==nrow(counttable),sum(apply(counttable[,2:ncol(counttable)],2,function(X)is.wholenumber(X)&X>=0))==(ncol(counttable)-1)*nrow(counttable))){
+        res<-TRUE
+      }else{
+        res<-FALSE
+      }
+      return(res)
     }
-
-
+    
+    check_genes<-function(genefile,counttable){
+      if (all(ncol(genefile)==1,nrow(genefile)>2,sum(genefile$V1 %in% counttable$GeneID)==length(genefile$V1))){
+        res<-TRUE
+      }else{
+        res<-FALSE
+      }
+      return(res)
+    }
+    
+   #######################################################################################  
     observeEvent(input$countfile, {
         
         
        if (!is.null(input$countfile)){
              countFile<-isolate(input$countfile)
              datPath<-countFile$datapath  
-             print(datPath)
-             }
+                          }
         inDr1<-read.table(datPath,header=TRUE,sep="\t",as.is=TRUE,quote="",nrows=1)
         inDr2<-suppressWarnings(fread(datPath,header=TRUE,sep="\t",nrows=1))
         if(ncol(inDr1)==ncol(inDr2)){cnv<-colnames(inDr1)
                                      cnv[1]<-"GeneID"}else{cnv<-c("GeneID",colnames(inDr1))}
         inDat<-fread(input=datPath,header=FALSE,sep="\t",skip=1)
         colnames(inDat)<-cnv
+        ###################
+        if(!ncol(inDat)>2|!nrow(inDat)>2){showModal(modalDialog(title = "COUNTFILE FORMAT INCORRECT",
+                                                 "Please provide an integer counts table with samples as columns and genes as rows!",
+                                                 easyClose = TRUE))}
+        req(ncol(inDat)>2&nrow(inDat)>2)
+        counts_ok<-check_counts(inDat)
+        if(!isTruthy(counts_ok)){showModal(modalDialog(title = "COUNTFILE FORMAT INCORRECT",
+                                                      "Please provide an integer counts table with samples as columns and genes as rows!",
+                                                      easyClose = TRUE))}
+        req(isTruthy(counts_ok))
+        ######################
         ####handle gencode####
         if(grepl("\\.[0-9]{1,2}",inDat$GeneID[1])){inDat$GeneID<-gsub("\\.[0-9]+","",inDat$GeneID)}
         ##render the head
@@ -136,9 +129,16 @@ server <- function(input, output, session) {
         inFile<-isolate(input$file1)
         inTab<-read.table(inFile$datapath, header = FALSE,sep="\t",quote="",as.is=TRUE)
         if(grepl("\\.[0-9]{1,2}",inTab[1,1])){inTab[,1]<-gsub("\\.[0-9]+","",inTab[,1])}
-        output$inTabHead<-renderTable(head(inTab),caption="Input gene IDs",caption.placement = getOption("xtable.caption.placement", "top"))
-    
-            observeEvent(input$savetable, {
+        ###################
+        genes_ok<-check_genes(inTab,inDat)
+        if(!isTruthy(genes_ok)){showModal(modalDialog(title = "GENE ID FILE FORMAT INCORRECT",
+                                                       "Please provide a single column headerless file of at least 3 gene IDs matching your countdata!",
+                                                       easyClose = TRUE))}
+        req(isTruthy(genes_ok))
+        
+        })#end of observe input$file1
+        ######################
+            observeEvent(input$runanalysis, {
                 sampleInfo<-isolate(values[["DF"]])
                 sampleInfo<-sampleInfo[!sampleInfo$Group %in% "NA",]
                 rownames(sampleInfo)<-sampleInfo$PlottingID
@@ -156,7 +156,7 @@ server <- function(input, output, session) {
                 normCounts<-v$E
                 selNormCounts<-normCounts[match(inTab$V1,rownames(normCounts)),]
                 selNormCounts<-selNormCounts[complete.cases(selNormCounts),]
-                output$NormCounts<-renderTable(selNormCounts,include.rownames=TRUE,caption="Normalized Log2CPM",caption.placement = getOption("xtable.caption.placement", "top"))
+                #output$NormCounts<-renderTable(selNormCounts,include.rownames=TRUE,caption="Normalized Log2CPM",caption.placement = getOption("xtable.caption.placement", "top"))
                 output$downloadNormCounts <- downloadHandler(filename = "NormalizedLog2CPM.xls",content=function(file) {write.table(selNormCounts,file,row.names = TRUE,sep="\t",quote=FALSE,dec = ",")})
                 ##annotate with external gene symbol
                 bmk<-getBM(attributes=c("ensembl_gene_id","external_gene_name"),filters="ensembl_gene_id",values=rownames(selNormCounts),mart=ensembl.xx)
@@ -177,9 +177,7 @@ server <- function(input, output, session) {
                                           })
 
             
-                        })#end of observe input$file1
-
-                    })#end of observe input$savetable
+                    })#end of observe input$runanalysis
         
 
         },ignoreInit=TRUE)#end of observe input$submitinput
@@ -223,7 +221,7 @@ server <- function(input, output, session) {
                                                               
                                                                   ),
                                                           fluidRow(
-                                                            actionButton(inputId="savetable",label="Run analysis",width="200px",style = "color: black;background-color:  	 	#6495ED")
+                                                            actionButton(inputId="runanalysis",label="Run analysis",width="200px",style = "color: black;background-color:  	 	#6495ED")
                                                           ),
                                                           fluidRow(
                                                               box(renderText("Please complete missing sample information. Plotting ID will be used to replace Sample ID on plots, Group will be used to construct a design table. Any samples with missing annotation will be removed from analysis."))
