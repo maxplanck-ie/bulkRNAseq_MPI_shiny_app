@@ -42,7 +42,7 @@ server <- function(input, output, session) {
     library(RColorBrewer,lib.loc=Rlib)
     library(ggplot2,lib.loc=Rlib)
     library(reshape2,lib.loc=Rlib)
-    library("biomaRt",lib.loc=Rlib)
+    #library("biomaRt",lib.loc=Rlib)
 
     output$sessionInfo <- renderPrint({capture.output(sessionInfo())})
     ######################################################################################
@@ -94,12 +94,12 @@ server <- function(input, output, session) {
         ####handle gencode####
         if(grepl("\\.[0-9]{1,2}",inDat$GeneID[1])){inDat$GeneID<-gsub("\\.[0-9]+","",inDat$GeneID)}
         ##render the head
-        output$datHead<-renderTable(head(inDat),caption="Original unnormalized input data",caption.placement = getOption("xtable.caption.placement", "top"))
+        #output$datHead<-renderTable(head(inDat),caption="Original unnormalized input data",caption.placement = getOption("xtable.caption.placement", "top"))
                           
         ##or grep for organism from ensembl gene ids:
-        emv<-c("ENSDARG"="drerio","ENSMUSG"="mmusculus","ENSG"="hsapiens","FBgn"="dmelanogaster")
-        ems<-emv[grep(gsub("[0-9].+","",inDat$GeneID[5]),names(emv))]
-        ensembl.xx<-useMart(biomart="ensembl",dataset=paste0(ems,"_gene_ensembl"))#,host="aug2017.archive.ensembl.org",host = "oct2016.archive.ensembl.org"
+        #emv<-c("ENSDARG"="drerio","ENSMUSG"="mmusculus","ENSG"="hsapiens","FBgn"="dmelanogaster")
+        #ems<-emv[grep(gsub("[0-9].+","",inDat$GeneID[5]),names(emv))]
+        #ensembl.xx<-useMart(biomart="ensembl",dataset=paste0(ems,"_gene_ensembl"))#,host="aug2017.archive.ensembl.org",host = "oct2016.archive.ensembl.org"
 
 ###############initiate reactive table to collect sample information ###############
 
@@ -122,21 +122,13 @@ server <- function(input, output, session) {
           if (!is.null(DF))
             rhandsontable(DF, stretchH = "all")
        })
+        
+        
+        ###other reactive values
+        values$normCounts<-""
+        values$genes<-sample(inDat$GeneID,10)
 
      
-##########################read user input file with gene ids#######################################
-        observeEvent(input$file1,{
-        inFile<-isolate(input$file1)
-        inTab<-read.table(inFile$datapath, header = FALSE,sep="\t",quote="",as.is=TRUE)
-        if(grepl("\\.[0-9]{1,2}",inTab[1,1])){inTab[,1]<-gsub("\\.[0-9]+","",inTab[,1])}
-        ###################
-        genes_ok<-check_genes(inTab,inDat)
-        if(!isTruthy(genes_ok)){showModal(modalDialog(title = "GENE ID FILE FORMAT INCORRECT",
-                                                       "Please provide a single column headerless file of at least 3 gene IDs matching your countdata!",
-                                                       easyClose = TRUE))}
-        req(isTruthy(genes_ok))
-        
-        })#end of observe input$file1
         ######################
             observeEvent(input$runanalysis, {
                 sampleInfo<-isolate(values[["DF"]])
@@ -153,31 +145,59 @@ server <- function(input, output, session) {
                 dge <- DGEList(counts=countdata)
                 dge <- calcNormFactors(dge)
                 v <- voom(dge,design,plot=FALSE)
-                normCounts<-v$E
-                selNormCounts<-normCounts[match(inTab$V1,rownames(normCounts)),]
+                values$normCounts<-v$E
+                req(values$normCounts)
+                showModal(modalDialog(title = "DATA NORMALISATION COMPLETE",
+                                      "Size factors were used to normalize the raw data, which was subsequently transformed to log2CPM.",
+                                      easyClose = TRUE))
+                
+            })#end of observe input$runanalysis
+        
+        
+        ##########################read user input file with gene ids#######################################
+        observeEvent(input$file1,{
+          inFile<-isolate(input$file1)
+          inTab<-read.table(inFile$datapath, header = FALSE,sep="\t",quote="",as.is=TRUE)
+          if(grepl("\\.[0-9]{1,2}",inTab[1,1])){inTab[,1]<-gsub("\\.[0-9]+","",inTab[,1])}
+          ###################
+          genes_ok<-check_genes(inTab,inDat)
+          if(!isTruthy(genes_ok)){showModal(modalDialog(title = "GENE ID FILE FORMAT INCORRECT",
+                                                        "Please provide a single column headerless file of at least 3 gene IDs matching your countdata!",
+                                                        easyClose = TRUE))}
+          req(isTruthy(genes_ok))
+          values$genes<-inTab$V1
+          
+        })#end of observe input$file1
+        
+        
+        observe({
+        normCounts<-values$normCounts
+        genes<-values$genes
+        req(normCounts,genes)
+                selNormCounts<-normCounts[match(genes,rownames(normCounts)),]
                 selNormCounts<-selNormCounts[complete.cases(selNormCounts),]
                 #output$NormCounts<-renderTable(selNormCounts,include.rownames=TRUE,caption="Normalized Log2CPM",caption.placement = getOption("xtable.caption.placement", "top"))
                 output$downloadNormCounts <- downloadHandler(filename = "NormalizedLog2CPM.xls",content=function(file) {write.table(selNormCounts,file,row.names = TRUE,sep="\t",quote=FALSE,dec = ",")})
                 ##annotate with external gene symbol
-                bmk<-getBM(attributes=c("ensembl_gene_id","external_gene_name"),filters="ensembl_gene_id",values=rownames(selNormCounts),mart=ensembl.xx)
+                #bmk<-getBM(attributes=c("ensembl_gene_id","external_gene_name"),filters="ensembl_gene_id",values=rownames(selNormCounts),mart=ensembl.xx)
                 plotdata<-as.data.frame(selNormCounts,stringsAsFactors=FALSE)
                 plotdata$GeneID<-rownames(selNormCounts)
-                plotdata$GeneSymbol<-bmk$external_gene_name[match(plotdata$GeneID,bmk$ensembl_gene_id)]
+                #plotdata$GeneSymbol<-bmk$external_gene_name[match(plotdata$GeneID,bmk$ensembl_gene_id)]
                 output$heatmap<-renderPlot({heatmap.2(selNormCounts, scale="row", trace="none", dendrogram="column",col=colorRampPalette(rev(brewer.pal(9,"RdBu")))(255),main=input$projectid, keysize=1,
                     margins = c(10,18),labRow=plotdata[,colnames(plotdata) %in% input$XlabelChoiceHeatmap]) })
                 x_choice <- reactive({switch(input$XlabelChoiceBarplot,"GeneID"="GeneID","GeneSymbol"="GeneSymbol")})
-                output$barplot<-renderPlot({
-                    plotdataL<-melt(plotdata,id.vars=c("GeneID","GeneSymbol"),value.name="Log2CPM",variable.name="SampleID")
-                    plotdataL$Log2CPM<-as.numeric(plotdataL$Log2CPM)
-                    plotdataL$Group<-sampleInfo$Group[match(plotdataL$SampleID,sampleInfo$PlottingID)]
-                    plotdata.SE<-summarySE(data=plotdataL,measurevar="Log2CPM",groupvars=c("Group","GeneID"))
-                    plotdata.SE$GeneSymbol<-plotdata$GeneSymbol[match(plotdata.SE$GeneID,plotdata$GeneID)]
+                #output$barplot<-renderPlot({
+                    #plotdataL<-melt(plotdata,id.vars=c("GeneID","GeneSymbol"),value.name="Log2CPM",variable.name="SampleID")
+                    #plotdataL$Log2CPM<-as.numeric(plotdataL$Log2CPM)
+                    #plotdataL$Group<-sampleInfo$Group[match(plotdataL$SampleID,sampleInfo$PlottingID)]
+                    #plotdata.SE<-summarySE(data=plotdataL,measurevar="Log2CPM",groupvars=c("Group","GeneID"))
+                    #plotdata.SE$GeneSymbol<-plotdata$GeneSymbol[match(plotdata.SE$GeneID,plotdata$GeneID)]
                 
-                    ggplot(data=plotdata.SE,aes(x=reorder(eval(as.name(x_choice())),Log2CPM),y=Log2CPM,fill=Group))+geom_bar(position=position_dodge(.9),colour="black",stat="identity")+geom_errorbar(position=position_dodge(.9),width=.25,aes(ymin=Log2CPM-sd, ymax=Log2CPM+sd))+scale_fill_manual(values=c("#FFFFFF","#CCCCCC"))+theme(text = element_text(size=16),axis.text = element_text(size=14),axis.text.x=element_text(angle=90,vjust=0),axis.title = element_text(size=14)) +xlab(x_choice())
-                                          })
+                    #ggplot(data=plotdata.SE,aes(x=reorder(eval(as.name(x_choice())),Log2CPM),y=Log2CPM,fill=Group))+geom_bar(position=position_dodge(.9),colour="black",stat="identity")+geom_errorbar(position=position_dodge(.9),width=.25,aes(ymin=Log2CPM-sd, ymax=Log2CPM+sd))+scale_fill_manual(values=c("#FFFFFF","#CCCCCC"))+theme(text = element_text(size=16),axis.text = element_text(size=14),axis.text.x=element_text(angle=90,vjust=0),axis.title = element_text(size=14)) +xlab(x_choice())
+                               #           })
 
             
-                    })#end of observe input$runanalysis
+        })            
         
 
         },ignoreInit=TRUE)#end of observe input$submitinput
