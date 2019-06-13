@@ -10,9 +10,7 @@ ui <- function(request) {dashboardPage(
     dashboardSidebar(
 
         fileInput(inputId="countfile",label="Upload feature counts table.",multiple=FALSE,accept=NULL,buttonLabel = "Browse...", placeholder = "No file selected"),
-        #fileInput(inputId="file1", label="Upload gene list.", multiple = FALSE, accept = NULL, width = NULL,buttonLabel = "Browse...", placeholder = "No file selected"),
         textOutput("fileDescription")
-        #actionButton("submitdataset","Submit dataset")
         ),
         
     dashboardBody(
@@ -30,9 +28,7 @@ server <- function(input, output, session) {
     
     output$fileDescription<-renderText("Please provide an integer count table with ensembl gene IDs as rownames and sample IDs as colnames.")
     
-    #UserFile: Please provide a one-column headerless txt file with ensemble gene IDs you would like to analyze.\n 
 
- 
 ##########################read/load processed data from a database##################
     library("data.table",lib.loc=Rlib)
     library("limma",lib.loc=Rlib)
@@ -42,7 +38,6 @@ server <- function(input, output, session) {
     library(RColorBrewer,lib.loc=Rlib)
     library(ggplot2,lib.loc=Rlib)
     library(reshape2,lib.loc=Rlib)
-    #library("biomaRt",lib.loc=Rlib)
 
     output$sessionInfo <- renderPrint({capture.output(sessionInfo())})
     ######################################################################################
@@ -93,9 +88,7 @@ server <- function(input, output, session) {
         ######################
         ####handle gencode####
         if(grepl("\\.[0-9]{1,2}",inDat$GeneID[1])){inDat$GeneID<-gsub("\\.[0-9]+","",inDat$GeneID)}
-        ##render the head
-        #output$datHead<-renderTable(head(inDat),caption="Original unnormalized input data",caption.placement = getOption("xtable.caption.placement", "top"))
-                          
+        
         ##or grep for organism from ensembl gene ids:
         #emv<-c("ENSDARG"="drerio","ENSMUSG"="mmusculus","ENSG"="hsapiens","FBgn"="dmelanogaster")
         #ems<-emv[grep(gsub("[0-9].+","",inDat$GeneID[5]),names(emv))]
@@ -134,6 +127,7 @@ server <- function(input, output, session) {
                 sampleInfo<-isolate(values[["DF"]])
                 sampleInfo<-sampleInfo[!sampleInfo$Group %in% "NA",]
                 rownames(sampleInfo)<-sampleInfo$PlottingID
+                values$sampleInfo<-sampleInfo
 
                 countdata<-as.data.frame(inDat[,match(sampleInfo$SampleID,colnames(inDat)),with=FALSE],stringsAsFactors=FALSE)
                 colnames(countdata)<-sampleInfo$PlottingID
@@ -185,19 +179,21 @@ server <- function(input, output, session) {
                 #plotdata$GeneSymbol<-bmk$external_gene_name[match(plotdata$GeneID,bmk$ensembl_gene_id)]
                 output$heatmap<-renderPlot({heatmap.2(selNormCounts, scale="row", trace="none", dendrogram="column",col=colorRampPalette(rev(brewer.pal(9,"RdBu")))(255),main=input$projectid, keysize=1,
                     margins = c(10,18),labRow=plotdata[,colnames(plotdata) %in% input$XlabelChoiceHeatmap]) })
-                x_choice <- reactive({switch(input$XlabelChoiceBarplot,"GeneID"="GeneID","GeneSymbol"="GeneSymbol")})
-                #output$barplot<-renderPlot({
-                    #plotdataL<-melt(plotdata,id.vars=c("GeneID","GeneSymbol"),value.name="Log2CPM",variable.name="SampleID")
-                    #plotdataL$Log2CPM<-as.numeric(plotdataL$Log2CPM)
-                    #plotdataL$Group<-sampleInfo$Group[match(plotdataL$SampleID,sampleInfo$PlottingID)]
+                #x_choice <- reactive({switch(input$XlabelChoiceBarplot,"GeneID"="GeneID","GeneSymbol"="GeneSymbol")})
+                x_choice<-"GeneID"
+                sampleInfo<-isolate(values$sampleInfo)
+                output$jplot<-renderPlot({
+                    plotdataL<-melt(plotdata,id.vars=c("GeneID"),value.name="Log2CPM",variable.name="SampleID")#,"GeneSymbol"
+                    plotdataL$Log2CPM<-as.numeric(plotdataL$Log2CPM)
+                    plotdataL$Group<-sampleInfo$Group[match(plotdataL$SampleID,sampleInfo$PlottingID)]
                     #plotdata.SE<-summarySE(data=plotdataL,measurevar="Log2CPM",groupvars=c("Group","GeneID"))
                     #plotdata.SE$GeneSymbol<-plotdata$GeneSymbol[match(plotdata.SE$GeneID,plotdata$GeneID)]
                 
-                    #ggplot(data=plotdata.SE,aes(x=reorder(eval(as.name(x_choice())),Log2CPM),y=Log2CPM,fill=Group))+geom_bar(position=position_dodge(.9),colour="black",stat="identity")+geom_errorbar(position=position_dodge(.9),width=.25,aes(ymin=Log2CPM-sd, ymax=Log2CPM+sd))+scale_fill_manual(values=c("#FFFFFF","#CCCCCC"))+theme(text = element_text(size=16),axis.text = element_text(size=14),axis.text.x=element_text(angle=90,vjust=0),axis.title = element_text(size=14)) +xlab(x_choice())
-                               #           })
+                    ggplot(data=plotdataL,aes(x=eval(as.name(x_choice)),y=Log2CPM,group=Group,colour=Group))+geom_jitter(size=2,alpha=0.6,width=0.2,height=0.000001)+scale_fill_manual(values=c("#FFFFFF","#CCCCCC"))+theme(text = element_text(size=16),axis.text = element_text(size=14),axis.text.x=element_text(angle=90,vjust=0),axis.title = element_text(size=14)) +xlab(x_choice)
+                               })# end of render jplot
 
             
-        })            
+        })  ##end of observe          
         
 
         },ignoreInit=TRUE)#end of observe input$submitinput
@@ -252,7 +248,7 @@ server <- function(input, output, session) {
                                                       fluidPage(
                                                         fluidRow(
                                                           box(title="Heatmap",plotOutput("heatmap"),height=600),
-                                                          box(title="Jitter plot",plotOutput("barplot"),height=600)
+                                                          box(title="Jitter plot",plotOutput("jplot"),height=600)
                                                         ),
                                                         fluidRow(
                                                           box(title="Gene list",fileInput(inputId="file1", label="Upload gene list.", multiple = FALSE, accept = NULL, width = NULL,buttonLabel = "Browse...", placeholder = "No file selected")),
