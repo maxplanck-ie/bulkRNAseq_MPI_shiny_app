@@ -8,7 +8,7 @@ ui <- function(request) {dashboardPage(
     dashboardHeader(title = "Dataset selection"),
     ## Sidebar content
     dashboardSidebar(
-
+      selectInput(inputId="genome", label="Select organism", choices=c("PLEASE SELECT AN ORGANISM","Zebrafish [zv9]","Zebrafish [zv10]","Fruitfly [dm6]","Fruitfly [dm3]","Human [hg37]","Human [hg38]","Mouse [mm9]","Mouse [mm10]"), selected = NULL),
         fileInput(inputId="countfile",label="Upload feature counts table.",multiple=FALSE,accept=NULL,buttonLabel = "Browse...", placeholder = "No file selected"),
         textOutput("fileDescription")
         ),
@@ -71,6 +71,22 @@ server <- function(input, output, session) {
     }
     
    #######################################################################################  
+    values <- reactiveValues()
+    values$gtab<-""
+   #######################################################################################  
+    observe({
+      if(!input$genome %in% "PLEASE SELECT AN ORGANISM"){
+        genome<-isolate(input$genome)
+        gv<-c("Zebrafish [zv9]"="Zv9","Zebrafish [zv10]"="GRCz10","Fruitfly [dm6]"="dm6","Fruitfly [dm3]"="dm3","Human [hg37]"="GRCh37","Human [hg38]"="GRCh38","Mouse [mm9]"="GRCm37","Mouse [mm10]"="GRCm38")
+        gfile<-system(sprintf("find /data/manke/sikora/shiny_apps/bulkRNAseq_MPI_shiny_app/tables -name \"%s*\"",gv[genome]),intern=TRUE)
+        gtab<-fread(gfile,header=FALSE,sep="\t")
+        colnames(gtab)<-c("GeneID","GeneSymbol")
+        if(grepl("\\.[0-9]{1,2}",gtab$GeneID[1])){gtab$GeneID<-gsub("\\.[0-9]+","",gtab$GeneID)}
+        values$gtab<-gtab
+        
+      }
+    })
+    
     observeEvent(input$countfile, {
         
         
@@ -105,7 +121,7 @@ server <- function(input, output, session) {
 
 ###############initiate reactive table to collect sample information ###############
 
-        values <- reactiveValues()
+        
         DF<-data.frame(SampleID=colnames(inDat)[2:ncol(inDat)],PlottingID=colnames(inDat)[2:ncol(inDat)],Group=(rep("NA",(ncol(inDat)-1))),stringsAsFactors = F)
         observe({
           if (!is.null(input$hot)) {
@@ -182,25 +198,35 @@ server <- function(input, output, session) {
         normCounts<-values$normCounts
         genes<-values$genes
         req(normCounts,genes)
-                selNormCounts<-normCounts[match(genes,rownames(normCounts)),]
-                selNormCounts<-selNormCounts[complete.cases(selNormCounts),]
-                output$downloadNormCounts <- downloadHandler(filename = "NormalizedLog2CPM.xls",content=function(file) {write.table(selNormCounts,file,row.names = TRUE,sep="\t",quote=FALSE,dec = ",")})
-                ##annotate with external gene symbol
-                #bmk<-getBM(attributes=c("ensembl_gene_id","external_gene_name"),filters="ensembl_gene_id",values=rownames(selNormCounts),mart=ensembl.xx)
-                plotdata<-as.data.frame(selNormCounts,stringsAsFactors=FALSE)
-                plotdata$GeneID<-rownames(selNormCounts)
-                #plotdata$GeneSymbol<-bmk$external_gene_name[match(plotdata$GeneID,bmk$ensembl_gene_id)]
-                output$heatmap<-renderPlot({heatmap.2(selNormCounts, scale="row", trace="none", dendrogram="column",col=colorRampPalette(rev(brewer.pal(9,"RdBu")))(255),main=input$projectid, keysize=1,margins = c(10,18),labRow=plotdata[,colnames(plotdata) %in% input$XlabelChoiceHeatmap],ColSideColors=c("grey40","darkred","darkgreen","darkblue")[factor(sampleInfo$Group[match(colnames(selNormCounts),sampleInfo$SampleID)])]) })
-                #x_choice <- reactive({switch(input$XlabelChoiceBarplot,"GeneID"="GeneID","GeneSymbol"="GeneSymbol")})
-                x_choice<-"GeneID"
-                sampleInfo<-isolate(values$sampleInfo)
-                output$jplot<-renderPlot({
-                    plotdataL<-melt(plotdata,id.vars=c("GeneID"),value.name="Log2CPM",variable.name="SampleID")#,"GeneSymbol"
-                    plotdataL$Log2CPM<-as.numeric(plotdataL$Log2CPM)
-                    plotdataL$Group<-sampleInfo$Group[match(plotdataL$SampleID,sampleInfo$PlottingID)]
-                    #plotdata.SE$GeneSymbol<-plotdata$GeneSymbol[match(plotdata.SE$GeneID,plotdata$GeneID)]
-                
-                    ggplot(data=plotdataL,aes(x=eval(as.name(x_choice)),y=Log2CPM,group=Group,colour=Group))+geom_jitter(size=2,alpha=0.6,width=0.2,height=0.000001)+scale_colour_manual(values=c("grey40","darkred","darkgreen","darkblue"))+theme(text = element_text(size=16),axis.text = element_text(size=14),axis.text.x=element_text(angle=90,vjust=0),axis.title = element_text(size=14)) +xlab(x_choice)
+        selNormCounts<-normCounts[match(genes,rownames(normCounts)),]
+        selNormCounts<-selNormCounts[complete.cases(selNormCounts),]
+        output$downloadNormCounts <- downloadHandler(filename = "NormalizedLog2CPM.xls",content=function(file) {write.table(selNormCounts,file,row.names = TRUE,sep="\t",quote=FALSE,dec = ",")})
+        ##annotate with external gene symbol  ----->>> only if organism was selected, otherwise, copy over gene IDs!
+        plotdata<-as.data.frame(selNormCounts,stringsAsFactors=FALSE)
+        plotdata$GeneID<-rownames(selNormCounts)
+        
+        if(isTruthy(values$gtab)){
+          gtab<-isolate(values$gtab)
+          plotdata$GeneSymbol<-gtab$GeneSymbol[match(plotdata$GeneID,gtab$GeneID,nomatch=NA)]
+          if(sum(is.na(plotdata$GeneSymbol))==nrow(plotdata)){showModal(modalDialog(title = "ORGANISM INFORMATION NOT MATCHING COUNTFILE",
+                                                                                    "None of the Gene IDs in your countfile matched the selected organism annotation, GeneIDs will be used instead of Gene Symbols.",easyClose = TRUE))}
+          plotdata$GeneSymbol[is.na(plotdata$GeneSymbol)|plotdata$GeneSymbol==""]<-plotdata$GeneID[is.na(plotdata$GeneSymbol)|plotdata$GeneSymbol==""]
+        }else{plotdata$GeneSymbol<-plotdata$GeneID}
+        
+        if(input$XlabelChoice=="GeneSymbol"&!isTruthy(values$gtab)){showModal(modalDialog(title = "ORGANISM INFORMATION NOT AVAILABLE",
+                                                                                         "In order to use Gene Symbol annotation, please select an organism from the list on the sidebar!",easyClose = TRUE))}
+        
+        output$heatmap<-renderPlot({heatmap.2(selNormCounts, scale="row", trace="none", dendrogram="column",col=colorRampPalette(rev(brewer.pal(9,"RdBu")))(255),main=input$projectid, keysize=1,margins = c(10,18),labRow=plotdata[,colnames(plotdata) %in% input$XlabelChoice],ColSideColors=c("grey40","darkred","darkgreen","darkblue")[factor(sampleInfo$Group[match(colnames(selNormCounts),sampleInfo$SampleID)])]) })
+        
+        x_choice <- reactive({switch(input$XlabelChoice,"GeneID"="GeneID","GeneSymbol"="GeneSymbol")})
+        #x_choice<-"GeneID"
+        sampleInfo<-isolate(values$sampleInfo)
+        output$jplot<-renderPlot({
+            plotdataL<-melt(plotdata,id.vars=c("GeneID","GeneSymbol"),value.name="Log2CPM",variable.name="SampleID")
+            plotdataL$Log2CPM<-as.numeric(plotdataL$Log2CPM)
+            plotdataL$Group<-sampleInfo$Group[match(plotdataL$SampleID,sampleInfo$PlottingID)]
+            
+            ggplot(data=plotdataL,aes(x=eval(as.name(x_choice())),y=Log2CPM,group=Group,colour=Group))+geom_jitter(size=2,alpha=0.6,width=0.2,height=0.000001)+scale_colour_manual(values=c("grey40","darkred","darkgreen","darkblue"))+theme(text = element_text(size=16),axis.text = element_text(size=14),axis.text.x=element_text(angle=90,vjust=0),axis.title = element_text(size=14)) +xlab(x_choice())
                                })# end of render jplot
 
             
@@ -263,7 +289,7 @@ server <- function(input, output, session) {
                                                         ),
                                                         fluidRow(
                                                           box(title="Gene list",fileInput(inputId="file1", label="Upload gene list.", multiple = FALSE, accept = NULL, width = NULL,buttonLabel = "Browse...", placeholder = "No file selected")),
-                                                          box(title = "Plot controls",selectInput("XlabelChoiceHeatmap", "Gene label",choices=c("GeneID","GeneSymbol"),selected="GeneID"))),
+                                                          box(title = "Plot controls",selectInput("XlabelChoice", "Gene label",choices=c("GeneID","GeneSymbol"),selected="GeneID"))),
                                                         fluidRow(
                                                           box(title="Method Description",renderText("Genewise Log2 counts per million were mean-centered and scaled across the samples. Average linkage clustering on euclidean distances was performed.")),
                                                           box(title="Method Description",renderText("Mean Log2 counts per million are plotted with standard deviation as error bars.")))
