@@ -226,7 +226,7 @@ server <- function(input, output, session) {
             plotdataL$Log2CPM<-as.numeric(plotdataL$Log2CPM)
             plotdataL$Group<-sampleInfo$Group[match(plotdataL$SampleID,sampleInfo$PlottingID)]
             
-            ggplot(data=plotdataL,aes(x=eval(as.name(x_choice())),y=Log2CPM,group=Group,colour=Group))+geom_jitter(size=2,alpha=0.6,width=0.2,height=0.000001)+scale_colour_manual(values=c("grey40","darkred","darkgreen","darkblue"))+theme(text = element_text(size=16),axis.text = element_text(size=14),axis.text.x=element_text(angle=90,vjust=0),axis.title = element_text(size=14)) +xlab(x_choice())
+            ggplot(data=plotdataL,aes(x=eval(as.name(x_choice())),y=Log2CPM,group=Group,colour=Group))+geom_point(size=2,alpha=0.6,position=position_jitterdodge(jitter.width=0.2,jitter.height=0.000001,seed=314))+scale_colour_manual(values=c("grey40","darkred","darkgreen","darkblue"))+theme(text = element_text(size=16),axis.text = element_text(size=14),axis.text.x=element_text(angle=90,vjust=0),axis.title = element_text(size=14)) +xlab(x_choice())
                                })# end of render jplot
 
             
