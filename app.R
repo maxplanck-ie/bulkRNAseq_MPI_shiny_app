@@ -23,8 +23,8 @@ ui <- function(request) {dashboardPage(
 
 server <- function(input, output, session) {
     
-    output$walkThrough<-renderUI(HTML("<ul><li>1.Upload feature counts count table. Click on retrieve dataset. Your data will appear in the InputData tab.</li><li>2.Provide a UserFile with ensembl gene IDs to analyze.</li><li>3.If necessary, relabel sample IDs to desired plotting IDs in the corresponding interactive sampleInfo table column, in the InputData tab. Provide group information in the group column.Click on Run analysis. Your results will appear in the corresponding tabs.</li><li>The order of providing the information matters!</li></ul>"))
-    output$FAQ<-renderText("Currently supported organisms are Homo sapiens, Mus musculus, Danio rerio, Drosophila melanogaster.\n Merging data from multiple datasets or batch effect removal are currenlty not supported.\n For questions, bug reports or feature requests, contact sikora@ie-freiburg.mpg.de.\n For reporting issues or pull requests on GitHub, go to https://github.com/maxplanck-ie/bulkRNAseq_MPI_shiny_app .")
+    output$walkThrough<-renderUI(HTML("<ul><li>1.Provide the organism information and upload feature counts count table. Your data will appear in the Input Annotation tab.</li><li>2.If necessary, relabel sample IDs to desired plotting IDs in the corresponding interactive sampleInfo table column, in the Input Annotation tab. Provide group information in the group column. Click on Run analysis. </li><li>3.Provide a text with ensembl gene IDs to analyze in the Data Visualization tab.</li></ul>"))
+    output$FAQ<-renderText("Merging data from multiple datasets or batch effect removal are currenlty not supported.\n For questions, bug reports or feature requests, contact sikora@ie-freiburg.mpg.de.\n For reporting issues or pull requests on GitHub, go to https://github.com/maxplanck-ie/bulkRNAseq_MPI_shiny_app .")
     
     output$fileDescription<-renderText("Please provide an integer count table with ensembl gene IDs as rownames and sample IDs as colnames.")
     
@@ -114,10 +114,6 @@ server <- function(input, output, session) {
         ####handle gencode####
         if(grepl("\\.[0-9]{1,2}",inDat$GeneID[1])){inDat$GeneID<-gsub("\\.[0-9]+","",inDat$GeneID)}
         
-        ##or grep for organism from ensembl gene ids:
-        #emv<-c("ENSDARG"="drerio","ENSMUSG"="mmusculus","ENSG"="hsapiens","FBgn"="dmelanogaster")
-        #ems<-emv[grep(gsub("[0-9].+","",inDat$GeneID[5]),names(emv))]
-        #ensembl.xx<-useMart(biomart="ensembl",dataset=paste0(ems,"_gene_ensembl"))#,host="aug2017.archive.ensembl.org",host = "oct2016.archive.ensembl.org"
 
 ###############initiate reactive table to collect sample information ###############
 
@@ -292,7 +288,7 @@ server <- function(input, output, session) {
                                                           box(title = "Plot controls",selectInput("XlabelChoice", "Gene label",choices=c("GeneID","GeneSymbol"),selected="GeneID"))),
                                                         fluidRow(
                                                           box(title="Method Description",renderText("Genewise Log2 counts per million were mean-centered and scaled across the samples. Average linkage clustering on euclidean distances was performed.")),
-                                                          box(title="Method Description",renderText("Mean Log2 counts per million are plotted with standard deviation as error bars.")))
+                                                          box(title="Method Description",renderText("Genewise Log2 counts per million are plotted using small amounts of jitter as offset.")))
                                                                ),
                                                       downloadButton("downloadNormCounts", label="Download Normalized Counts",style = "color: black;background-color: #6495ED")
                                                           ),
