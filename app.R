@@ -62,7 +62,7 @@ server <- function(input, output, session) {
     }
     
     check_sampleInfo<-function(sampleSheet){
-      if (all(sum(is.na(sampleSheet$Group))<nrow(sampleSheet),min(as.numeric(table(sampleSheet$Group)))>=2,length(table(sampleSheet$Group))>=2)){
+      if (all(sum(sampleSheet$Group %in% "NA")<nrow(sampleSheet),min(as.numeric(table(sampleSheet$Group[!sampleSheet$Group %in% "NA"])))>=2,length(table(sampleSheet$Group[!sampleSheet$Group %in% "NA"]))>=2)){
         res<-TRUE
       }else{
         res<-FALSE
@@ -184,7 +184,6 @@ server <- function(input, output, session) {
         req(normCounts,genes)
                 selNormCounts<-normCounts[match(genes,rownames(normCounts)),]
                 selNormCounts<-selNormCounts[complete.cases(selNormCounts),]
-                #output$NormCounts<-renderTable(selNormCounts,include.rownames=TRUE,caption="Normalized Log2CPM",caption.placement = getOption("xtable.caption.placement", "top"))
                 output$downloadNormCounts <- downloadHandler(filename = "NormalizedLog2CPM.xls",content=function(file) {write.table(selNormCounts,file,row.names = TRUE,sep="\t",quote=FALSE,dec = ",")})
                 ##annotate with external gene symbol
                 #bmk<-getBM(attributes=c("ensembl_gene_id","external_gene_name"),filters="ensembl_gene_id",values=rownames(selNormCounts),mart=ensembl.xx)
@@ -202,7 +201,7 @@ server <- function(input, output, session) {
                     plotdataL$Group<-sampleInfo$Group[match(plotdataL$SampleID,sampleInfo$PlottingID)]
                     #plotdata.SE$GeneSymbol<-plotdata$GeneSymbol[match(plotdata.SE$GeneID,plotdata$GeneID)]
                 
-                    ggplot(data=plotdataL,aes(x=eval(as.name(x_choice)),y=Log2CPM,group=Group,colour=Group))+geom_jitter(size=2,alpha=0.6,width=0.2,height=0.000001)+scale_fill_manual(values=c("#FFFFFF","#CCCCCC"))+theme(text = element_text(size=16),axis.text = element_text(size=14),axis.text.x=element_text(angle=90,vjust=0),axis.title = element_text(size=14)) +xlab(x_choice)
+                    ggplot(data=plotdataL,aes(x=reorder(eval(as.name(x_choice))),y=Log2CPM,group=Group,colour=Group))+geom_jitter(size=2,alpha=0.6,width=0.2,height=0.000001)+scale_colour_manual(values=c("#FFFFFF","#CCCCCC"))+theme(text = element_text(size=16),axis.text = element_text(size=14),axis.text.x=element_text(angle=90,vjust=0),axis.title = element_text(size=14)) +xlab(x_choice)
                                })# end of render jplot
 
             
