@@ -190,8 +190,7 @@ server <- function(input, output, session) {
                 plotdata<-as.data.frame(selNormCounts,stringsAsFactors=FALSE)
                 plotdata$GeneID<-rownames(selNormCounts)
                 #plotdata$GeneSymbol<-bmk$external_gene_name[match(plotdata$GeneID,bmk$ensembl_gene_id)]
-                output$heatmap<-renderPlot({heatmap.2(selNormCounts, scale="row", trace="none", dendrogram="column",col=colorRampPalette(rev(brewer.pal(9,"RdBu")))(255),main=input$projectid, keysize=1,
-                    margins = c(10,18),labRow=plotdata[,colnames(plotdata) %in% input$XlabelChoiceHeatmap]) })
+                output$heatmap<-renderPlot({heatmap.2(selNormCounts, scale="row", trace="none", dendrogram="column",col=colorRampPalette(rev(brewer.pal(9,"RdBu")))(255),main=input$projectid, keysize=1,margins = c(10,18),labRow=plotdata[,colnames(plotdata) %in% input$XlabelChoiceHeatmap],ColSideColors=c("grey40","darkred","darkgreen","darkblue")[factor(sampleInfo$Group[match(colnames(selNormCounts),sampleInfo$SampleID)])]) })
                 #x_choice <- reactive({switch(input$XlabelChoiceBarplot,"GeneID"="GeneID","GeneSymbol"="GeneSymbol")})
                 x_choice<-"GeneID"
                 sampleInfo<-isolate(values$sampleInfo)
