@@ -191,6 +191,7 @@ server <- function(input, output, session) {
         
         
         observe({
+        sampleInfo<-values$sampleInfo  
         normCounts<-values$normCounts
         genes<-values$genes
         req(normCounts,genes)
@@ -212,11 +213,11 @@ server <- function(input, output, session) {
         if(input$XlabelChoice=="GeneSymbol"&!isTruthy(values$gtab)){showModal(modalDialog(title = "ORGANISM INFORMATION NOT AVAILABLE",
                                                                                          "In order to use Gene Symbol annotation, please select an organism from the list on the sidebar!",easyClose = TRUE))}
         
-        output$heatmap<-renderPlot({heatmap.2(selNormCounts, scale="row", trace="none", Rowv=FALSE,dendrogram="column",col=colorRampPalette(rev(brewer.pal(9,"RdBu")))(255),main=input$projectid, keysize=1,margins = c(10,18),labRow=plotdata[,colnames(plotdata) %in% input$XlabelChoice],ColSideColors=c("grey40","darkred","darkgreen","darkblue")[factor(sampleInfo$Group[match(colnames(selNormCounts),sampleInfo$SampleID)])]) })
+        output$heatmap<-renderPlot({
+          heatmap.2(selNormCounts, scale="row", trace="none", Rowv=FALSE,dendrogram="column",col=colorRampPalette(rev(brewer.pal(9,"RdBu")))(255),main=input$projectid, keysize=1,margins = c(10,18),labRow=plotdata[,colnames(plotdata) %in% input$XlabelChoice],ColSideColors=c("grey40","darkred","darkgreen","darkblue")[factor(sampleInfo$Group[match(colnames(selNormCounts),sampleInfo$SampleID)])]) })
         
         x_choice <- reactive({switch(input$XlabelChoice,"GeneID"="GeneID","GeneSymbol"="GeneSymbol")})
         #x_choice<-"GeneID"
-        sampleInfo<-isolate(values$sampleInfo)
         output$jplot<-renderPlot({
             plotdataL<-melt(plotdata,id.vars=c("GeneID","GeneSymbol"),value.name="Log2CPM",variable.name="SampleID")
             plotdataL$Log2CPM<-as.numeric(plotdataL$Log2CPM)
