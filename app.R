@@ -214,7 +214,7 @@ server <- function(input, output, session) {
                                                                                          "In order to use Gene Symbol annotation, please select an organism from the list on the sidebar!",easyClose = TRUE))}
         
         output$heatmap<-renderPlot({
-          heatmap.2(selNormCounts, scale="row", trace="none", Rowv=FALSE,dendrogram="column",col=colorRampPalette(rev(brewer.pal(9,"RdBu")))(255),main=input$projectid, keysize=1,margins = c(10,18),labRow=plotdata[,colnames(plotdata) %in% input$XlabelChoice],ColSideColors=c("grey40","darkred","darkgreen","darkblue")[factor(sampleInfo$Group[match(colnames(selNormCounts),sampleInfo$SampleID)])]) })
+          heatmap.2(selNormCounts, scale="row", trace="none", Rowv=FALSE,dendrogram="column",col=colorRampPalette(rev(brewer.pal(9,"RdBu")))(255),main=input$projectid, keysize=1.5,margins = c(10,18),labRow=plotdata[,colnames(plotdata) %in% input$XlabelChoice],density.info="none",ColSideColors=brewer.pal(10,"Dark2")[factor(sampleInfo$Group[match(colnames(selNormCounts),sampleInfo$SampleID)])]) })
         
         x_choice <- reactive({switch(input$XlabelChoice,"GeneID"="GeneID","GeneSymbol"="GeneSymbol")})
         #x_choice<-"GeneID"
@@ -225,7 +225,7 @@ server <- function(input, output, session) {
             plotdataL$GeneID<-factor(plotdataL$GeneID,levels=plotdata$GeneID)
             plotdataL$GeneSymbol<-factor(plotdataL$GeneSymbol,levels=plotdata$GeneSymbol)
             
-            ggplot(data=plotdataL,aes(x=eval(as.name(x_choice())),y=Log2CPM,group=Group,colour=Group))+geom_point(size=2,alpha=0.6,position=position_jitterdodge(jitter.width=0.2,jitter.height=0.000001,seed=314))+scale_colour_manual(values=c("grey40","darkred","darkgreen","darkblue"))+theme(text = element_text(size=16),axis.text = element_text(size=14),axis.text.x=element_text(angle=90,vjust=0),axis.title = element_text(size=14)) +xlab(x_choice())
+            ggplot(data=plotdataL,aes(x=eval(as.name(x_choice())),y=Log2CPM,group=Group,colour=Group))+geom_point(size=2,alpha=0.6,position=position_jitterdodge(jitter.width=0.2,jitter.height=0.000001,seed=314))+scale_colour_manual(values=brewer.pal(10,"Dark2"))+theme(text = element_text(size=16),axis.text = element_text(size=14),axis.text.x=element_text(angle=90,vjust=0),axis.title = element_text(size=14)) +xlab(x_choice())
                                })# end of render jplot
 
             
