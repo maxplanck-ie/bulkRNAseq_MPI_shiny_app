@@ -4,6 +4,9 @@ Rlib="/data/manke/sikora/shiny_apps/Rlibs3.5.0_bioc3.7"
 library(shiny,lib.loc=Rlib)
 library(shinydashboard,lib.loc=Rlib)
 library(rhandsontable,lib.loc=Rlib)
+
+options(shiny.maxRequestSize = 20*1024^2)
+
 ui <- function(request) {dashboardPage(
     dashboardHeader(title = "Dataset selection"),
     ## Sidebar content
