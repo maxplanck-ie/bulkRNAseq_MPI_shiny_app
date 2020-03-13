@@ -121,7 +121,7 @@ server <- function(input, output, session) {
 ###############initiate reactive table to collect sample information ###############
 
         
-        DF<-data.frame(SampleID=colnames(inDat)[2:ncol(inDat)],PlottingID=colnames(inDat)[2:ncol(inDat)],Group=(rep("NA",(ncol(inDat)-1))),stringsAsFactors = F)
+        DF<-data.frame(SampleID=colnames(inDat)[2:ncol(inDat)],PlottingID=colnames(inDat)[2:ncol(inDat)],Batch=(rep("NA",(ncol(inDat)-1))),Group=(rep("NA",(ncol(inDat)-1))),stringsAsFactors = F)
         observe({
           if (!is.null(input$hot)) {
             DF = hot_to_r(input$hot)
@@ -163,12 +163,18 @@ server <- function(input, output, session) {
                 rownames(countdata)<-inDat$GeneID
                 output$countDatHead<-renderTable(head(countdata),include.rownames=TRUE,caption="Relabeled unnormalized input data",caption.placement = getOption("xtable.caption.placement", "top"),width=500)
 
-                design<-model.matrix(~1+Group,data=sampleInfo)
+                if(sum(sampleInfo$Batch=="NA")>0){
+                design<-model.matrix(~1+Group,data=sampleInfo)} else { 
+                design<-model.matrix(~1+Batch+Group,data=sampleInfo)}
                 rownames(design)<-sampleInfo$Plotting_ID
                 dge <- DGEList(counts=countdata)
                 dge <- calcNormFactors(dge)
                 v <- voom(dge,design,plot=FALSE)
-                values$normCounts<-v$E
+                expdat<-v$E
+                if(sum(sampleInfo$Batch=="NA")==0){
+                  expdat<-removeBatchEffect(v$E,batch=sampleInfo$Batch)
+                }
+                values$normCounts<-expdat
                 req(values$normCounts)
                 showModal(modalDialog(title = "DATA NORMALISATION COMPLETE",
                                       "Size factors were used to normalize the raw data, which was subsequently transformed to log2CPM.",
