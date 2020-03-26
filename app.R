@@ -41,6 +41,7 @@ server <- function(input, output, session) {
     library(RColorBrewer,lib.loc=Rlib)
     library(ggplot2,lib.loc=Rlib)
     library(reshape2,lib.loc=Rlib)
+    library(dplyr,lib.loc=Rlib)
 
     output$sessionInfo <- renderPrint({capture.output(sessionInfo())})
     ######################################################################################
@@ -222,22 +223,39 @@ server <- function(input, output, session) {
         if(input$XlabelChoice=="GeneSymbol"&!isTruthy(values$gtab)){showModal(modalDialog(title = "ORGANISM INFORMATION NOT AVAILABLE",
                                                                                          "In order to use Gene Symbol annotation, please select an organism from the list on the sidebar!",easyClose = TRUE))}
         
+        ifelse(input$CBfriendly,colpalette<-brewer.pal(4,"Paired")[c(2,4,1,3)],colpalette<-brewer.pal(8,"Dark2"))
+        
         output$heatmap<-renderPlot({
-          heatmap.2(selNormCounts, scale="row", trace="none", Rowv=FALSE,dendrogram="column",col=colorRampPalette(rev(brewer.pal(9,"RdBu")))(255),main=input$projectid, keysize=1.5,margins = c(10,18),labRow=plotdata[,colnames(plotdata) %in% input$XlabelChoice],density.info="none",ColSideColors=brewer.pal(10,"Dark2")[factor(sampleInfo$Group[match(colnames(selNormCounts),sampleInfo$SampleID)])]) })
+          heatmap.2(selNormCounts, scale="row", trace="none", Rowv=FALSE,dendrogram="column",col=colorRampPalette(rev(brewer.pal(9,"RdBu")))(255),main=input$projectid, keysize=1.5,margins = c(10,18),labRow=plotdata[,colnames(plotdata) %in% input$XlabelChoice],density.info="none",ColSideColors=colpalette[factor(sampleInfo$Group[match(colnames(selNormCounts),sampleInfo$SampleID)])]) })
         
         x_choice <- reactive({switch(input$XlabelChoice,"GeneID"="GeneID","GeneSymbol"="GeneSymbol")})
         #x_choice<-"GeneID"
+        plotdataL<-melt(plotdata,id.vars=c("GeneID","GeneSymbol"),value.name="Log2CPM",variable.name="SampleID")
+        plotdataL$Log2CPM<-as.numeric(plotdataL$Log2CPM)
+        plotdataL$Group<-sampleInfo$Group[match(plotdataL$SampleID,sampleInfo$PlottingID)]
+        plotdataL$GeneID<-factor(plotdataL$GeneID,levels=plotdata$GeneID)
+        plotdataL$GeneSymbol<-factor(plotdataL$GeneSymbol,levels=plotdata$GeneSymbol)
+        ifelse(input$revlev,plotdataL$Group<-factor(plotdataL$Group,levels=rev(unique(plotdataL$Group))),plotdataL$Group<-factor(plotdataL$Group,levels=unique(plotdataL$Group)))
         output$jplot<-renderPlot({
-            plotdataL<-melt(plotdata,id.vars=c("GeneID","GeneSymbol"),value.name="Log2CPM",variable.name="SampleID")
-            plotdataL$Log2CPM<-as.numeric(plotdataL$Log2CPM)
-            plotdataL$Group<-sampleInfo$Group[match(plotdataL$SampleID,sampleInfo$PlottingID)]
-            plotdataL$GeneID<-factor(plotdataL$GeneID,levels=plotdata$GeneID)
-            plotdataL$GeneSymbol<-factor(plotdataL$GeneSymbol,levels=plotdata$GeneSymbol)
-            
-            ggplot(data=plotdataL,aes(x=eval(as.name(x_choice())),y=Log2CPM,group=Group,colour=Group))+geom_point(size=2,alpha=0.6,position=position_jitterdodge(jitter.width=0.2,jitter.height=0.000001,seed=314))+scale_colour_manual(values=brewer.pal(10,"Dark2"))+theme(text = element_text(size=16),axis.text = element_text(size=14),axis.text.x=element_text(angle=90,vjust=0),axis.title = element_text(size=14)) +xlab(x_choice())
+        ggplot(data=plotdataL,aes(x=eval(as.name(x_choice())),y=Log2CPM,group=Group,colour=Group))+geom_point(size=2,alpha=0.6,position=position_jitterdodge(jitter.width=0.2,jitter.height=0.000001,seed=314))+scale_colour_manual(values=colpalette)+theme(text = element_text(size=16),axis.text = element_text(size=14),axis.text.x=element_text(angle=90,vjust=0),axis.title = element_text(size=14)) +xlab(x_choice())
                                })# end of render jplot
+        
+        g1<-unique(sampleInfo$Group)[1]
+        g2<-unique(sampleInfo$Group)[2]
+        
+        #res<-{plotdataL %>% group_by(Group,GeneID) %>% summarise(value = list(Log2CPM)) %>% spread(GeneID, value) %>% group_by(GeneID) %>% 
+         # mutate(p_value = t.test(unlist(g1), unlist(g2))$p.value, paste0("mean_",g1) = mean(unlist(g1)), paste0("mean_",g2) = mean(unlist(g2)))}
+        
+        restemp<-summarize(group_by(plotdataL,Group,GeneID),GroupMean=mean(Log2CPM))
+        restempW<-dcast(restemp,GeneID~Group)
+        restempW$GeneSymbol<-plotdata$GeneSymbol[match(restempW$GeneID,plotdata$GeneID)]
+        restempW$pvalue<-unlist(lapply(split(plotdataL,factor(plotdataL$GeneID,levels=unique(plotdataL$GeneID))),FUN=function(X)t.test(Log2CPM~Group,data=X)$p.value))
+        restempW$padj<-p.adjust(restempW$pvalue)
+        restempW<-as.data.frame(restempW,stringsAsFactors=FALSE)
+        
+        output$ttest<-renderTable({restempW})
+        output$downloadTtest <- downloadHandler(filename = "t.test_results.xls",content=function(file) {write.table(restempW,file,row.names = FALSE,sep="\t",quote=FALSE,dec = ",")})
 
-            
         })  ##end of observe          
         
 
@@ -297,21 +315,31 @@ server <- function(input, output, session) {
                                                         ),
                                                         fluidRow(
                                                           box(title="Gene list",fileInput(inputId="file1", label="Upload gene list.", multiple = FALSE, accept = NULL, width = NULL,buttonLabel = "Browse...", placeholder = "No file selected")),
-                                                          box(title = "Plot controls",selectInput("XlabelChoice", "Gene label",choices=c("GeneID","GeneSymbol"),selected="GeneID"))),
+                                                          box(title = "Plot controls",
+                                                              selectInput("XlabelChoice", "Gene label",choices=c("GeneID","GeneSymbol"),selected="GeneID"),
+                                                              checkboxInput("CBfriendly", "Colour-blind friendly (up to 4 colours)"),
+                                                              checkboxInput("revlev", "Reverse group order"))),
                                                         fluidRow(
                                                           box(title="Method Description",renderText("Genewise Log2 counts per million were mean-centered and scaled across the samples. Average linkage clustering on euclidean distances was performed.")),
                                                           box(title="Method Description",renderText("Genewise Log2 counts per million are plotted using small amounts of jitter as offset.")))
                                                                ),
                                                       downloadButton("downloadNormCounts", label="Download Normalized Counts",style = "color: black;background-color: #6495ED")
                                                           ),
+                                                tabPanel(title="Statistical test",
+                                                         fluidPage(
+                                                           tableOutput("ttest"),
+                                                           downloadButton(outputId="downloadTtest", label="Download test results")
+                                                         )
+                                                         ),
                                                   tabPanel(title="Session Info",
                                                       fluidPage(
                                                           verbatimTextOutput("sessionInfo"),
                                                           downloadButton(outputId="downloadSessionInfo", label="Download session info")
                                                                )
                                                           )
+                                                
+                                                )
 
-                                                 )
 
             do.call(tabsetPanel, myTabs)})
 
