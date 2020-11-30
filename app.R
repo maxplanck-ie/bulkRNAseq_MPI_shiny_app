@@ -1,9 +1,9 @@
 ## app.R ##
-Rlib="/data/manke/sikora/shiny_apps/Rlibs3.5.0_bioc3.7"
+Rlib="/rstudio/galaxy/.rstudio/R/x86_64-pc-linux-gnu-library/3.6"
 .libPaths(Rlib)
-library(shiny,lib.loc=Rlib)
-library(shinydashboard,lib.loc=Rlib)
-library(rhandsontable,lib.loc=Rlib)
+library(shiny)
+library(shinydashboard)
+library(rhandsontable)
 
 options(shiny.maxRequestSize = 20*1024^2)
 
