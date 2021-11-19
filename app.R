@@ -1,11 +1,11 @@
-## app.R ##
-Rlib="/rstudio/galaxy/.rstudio/R/x86_64-pc-linux-gnu-library/3.6"
-.libPaths(Rlib)
 library(shiny)
 library(shinydashboard)
 library(rhandsontable)
 
 options(shiny.maxRequestSize = 20*1024^2)
+
+vignette_text = paste(readLines('vignette.html'),collapse ='\n')
+
 
 ui <- function(request) {dashboardPage(
     dashboardHeader(title = "Dataset selection"),
@@ -19,29 +19,28 @@ ui <- function(request) {dashboardPage(
     dashboardBody(
         h2("RNAseq counts visualization"),
         uiOutput("resultPanels")
-               
     )
 
  )}
 
 server <- function(input, output, session) {
     
-    output$walkThrough<-renderUI(HTML("<ul><li>1.Provide the organism information and upload feature counts count table. Your data will appear in the Input Annotation tab.</li><li>2.If necessary, relabel sample IDs to desired plotting IDs in the corresponding interactive sampleInfo table column, in the Input Annotation tab. Provide group information in the group column. Click on Run analysis. </li><li>3.Provide a text with ensembl gene IDs to analyze in the Data Visualization tab.</li></ul>"))
-    output$FAQ<-renderText("Merging data from multiple datasets or batch effect removal are currenlty not supported.\n For questions, bug reports or feature requests, contact sikora@ie-freiburg.mpg.de.\n For reporting issues or pull requests on GitHub, go to https://github.com/maxplanck-ie/bulkRNAseq_MPI_shiny_app .")
+    output$walkThrough<-renderUI(HTML("<ul><li>1.Provide the organism information and upload feature counts count table. Your data will appear in the Input Annotation tab.</li><li>2.If necessary, relabel sample IDs to desired plotting IDs in the corresponding interactive sampleInfo table column, in the Input Annotation tab. Provide group (and batch) information in the group column. Click on Run analysis. </li><li>3.Provide a text with ensembl gene IDs to analyze in the Data Visualization tab.</li></ul>"))
+    output$FAQ<-renderText("Merging data from multiple datasets or batch effect removal are currenlty not supported.\n For questions, bug reports or feature requests, contact bioinfo-core@ie-freiburg.mpg.de.\n For reporting issues or pull requests on GitHub, go to https://github.com/maxplanck-ie/bulkRNAseq_MPI_shiny_app .")
     
     output$fileDescription<-renderText("Please provide an integer count table with ensembl gene IDs as rownames and sample IDs as colnames.")
     
 
 ##########################read/load processed data from a database##################
-    library("data.table",lib.loc=Rlib)
-    library("limma",lib.loc=Rlib)
-    library("edgeR",lib.loc=Rlib)
-    library("car",lib.loc=Rlib)
-    library(gplots,lib.loc=Rlib)
-    library(RColorBrewer,lib.loc=Rlib)
-    library(ggplot2,lib.loc=Rlib)
-    library(reshape2,lib.loc=Rlib)
-    library(dplyr,lib.loc=Rlib)
+    library("data.table")
+    library("limma")
+    library("edgeR")
+#    library("car")
+    library(gplots)       # heatmap.2
+    library(RColorBrewer) # brewer.pal
+    library(ggplot2)
+#    library(reshape2)  # not necessary: use melt(d) --> melt(as.data.table(d))
+    library(dplyr)
 
     output$sessionInfo <- renderPrint({capture.output(sessionInfo())})
     ######################################################################################
@@ -82,7 +81,7 @@ server <- function(input, output, session) {
       if(!input$genome %in% "PLEASE SELECT AN ORGANISM"){
         genome<-isolate(input$genome)
         gv<-c("Zebrafish [zv9]"="Zv9","Zebrafish [zv10]"="GRCz10","Fruitfly [dm6]"="dm6","Fruitfly [dm3]"="dm3","Human [hg37]"="GRCh37","Human [hg38]"="GRCh38","Mouse [mm9]"="GRCm37","Mouse [mm10]"="GRCm38")
-        gfile<-system(sprintf("find /data/manke/sikora/shiny_apps/bulkRNAseq_MPI_shiny_app/tables -name \"%s*\"",gv[genome]),intern=TRUE)
+        gfile<-system(sprintf("find tables/ -name \"%s*\"",gv[genome]),intern=TRUE)
         gtab<-fread(gfile,header=FALSE,sep="\t")
         colnames(gtab)<-c("GeneID","GeneSymbol")
         if(grepl("\\.[0-9]{1,2}",gtab$GeneID[1])){gtab$GeneID<-gsub("\\.[0-9]+","",gtab$GeneID)}
@@ -122,7 +121,11 @@ server <- function(input, output, session) {
 ###############initiate reactive table to collect sample information ###############
 
         
-        DF<-data.frame(SampleID=colnames(inDat)[2:ncol(inDat)],PlottingID=colnames(inDat)[2:ncol(inDat)],Batch=(rep("NA",(ncol(inDat)-1))),Group=(rep("NA",(ncol(inDat)-1))),stringsAsFactors = F)
+        DF<-data.frame(SampleID=colnames(inDat)[2:ncol(inDat)],
+                       PlottingID=colnames(inDat)[2:ncol(inDat)],
+                       Batch=(rep("NA",(ncol(inDat)-1))),
+                       Group=(rep("NA",(ncol(inDat)-1))),
+                       stringsAsFactors = F)
         observe({
           if (!is.null(input$hot)) {
             DF = hot_to_r(input$hot)
@@ -165,8 +168,10 @@ server <- function(input, output, session) {
                 output$countDatHead<-renderTable(head(countdata),include.rownames=TRUE,caption="Relabeled unnormalized input data",caption.placement = getOption("xtable.caption.placement", "top"),width=500)
 
                 if(sum(sampleInfo$Batch=="NA")>0){
-                design<-model.matrix(~1+Group,data=sampleInfo)} else { 
-                design<-model.matrix(~1+Batch+Group,data=sampleInfo)}
+                  design<-model.matrix(~1+Group,data=sampleInfo)
+                } else { 
+                  design<-model.matrix(~1+Batch+Group,data=sampleInfo)
+                }
                 rownames(design)<-sampleInfo$Plotting_ID
                 dge <- DGEList(counts=countdata)
                 dge <- calcNormFactors(dge)
@@ -230,15 +235,19 @@ server <- function(input, output, session) {
         
         x_choice <- reactive({switch(input$XlabelChoice,"GeneID"="GeneID","GeneSymbol"="GeneSymbol")})
         #x_choice<-"GeneID"
-        plotdataL<-melt(plotdata,id.vars=c("GeneID","GeneSymbol"),value.name="Log2CPM",variable.name="SampleID")
+        plotdataL<-melt(as.data.table(plotdata),id.vars=c("GeneID","GeneSymbol"),value.name="Log2CPM",variable.name="SampleID")
         plotdataL$Log2CPM<-as.numeric(plotdataL$Log2CPM)
         plotdataL$Group<-sampleInfo$Group[match(plotdataL$SampleID,sampleInfo$PlottingID)]
         plotdataL$GeneID<-factor(plotdataL$GeneID,levels=plotdata$GeneID)
         plotdataL$GeneSymbol<-factor(plotdataL$GeneSymbol,levels=plotdata$GeneSymbol)
         ifelse(input$revlev,plotdataL$Group<-factor(plotdataL$Group,levels=rev(unique(plotdataL$Group))),plotdataL$Group<-factor(plotdataL$Group,levels=unique(plotdataL$Group)))
         output$jplot<-renderPlot({
-        ggplot(data=plotdataL,aes(x=eval(as.name(x_choice())),y=Log2CPM,group=Group,colour=Group))+geom_point(size=2,alpha=0.6,position=position_jitterdodge(jitter.width=0.2,jitter.height=0.000001,seed=314))+scale_colour_manual(values=colpalette)+theme(text = element_text(size=16),axis.text = element_text(size=14),axis.text.x=element_text(angle=90,vjust=0),axis.title = element_text(size=14)) +xlab(x_choice())
-                               })# end of render jplot
+        ggplot(data=plotdataL,aes(x=eval(as.name(x_choice())),y=Log2CPM,group=Group,colour=Group))+
+            geom_point(size=2,alpha=0.6,position=position_jitterdodge(jitter.width=0.2,jitter.height=0.000001,seed=314))+
+            scale_colour_manual(values=colpalette)+
+            theme(text = element_text(size=16),axis.text = element_text(size=14),axis.text.x=element_text(angle=90,vjust=0),axis.title = element_text(size=14)) +
+            xlab(x_choice())
+        })# end of render jplot
         
         g1<-unique(sampleInfo$Group)[1]
         g2<-unique(sampleInfo$Group)[2]
@@ -247,7 +256,7 @@ server <- function(input, output, session) {
          # mutate(p_value = t.test(unlist(g1), unlist(g2))$p.value, paste0("mean_",g1) = mean(unlist(g1)), paste0("mean_",g2) = mean(unlist(g2)))}
         
         restemp<-summarize(group_by(plotdataL,Group,GeneID),GroupMean=mean(Log2CPM))
-        restempW<-dcast(restemp,GeneID~Group)
+        restempW<-dcast(as.data.table(restemp),GeneID~Group)
         restempW$GeneSymbol<-plotdata$GeneSymbol[match(restempW$GeneID,plotdata$GeneID)]
         restempW$pvalue<-unlist(lapply(split(plotdataL,factor(plotdataL$GeneID,levels=unique(plotdataL$GeneID))),FUN=function(X)t.test(Log2CPM~Group,data=X)$p.value))
         restempW$padj<-p.adjust(restempW$pvalue)
@@ -261,13 +270,7 @@ server <- function(input, output, session) {
 
         },ignoreInit=TRUE)#end of observe input$submitinput
     
-    output$get_vignette <- downloadHandler(
-      filename = "bulkRNAseq_app_vignette.html",
-      content = function(con) {
-        file.copy(from="/data/manke/sikora/shiny_apps/bulkRNAseq_docs/bulkRNAseq_docs.html", to=con, overwrite =TRUE)
-      }
-    )
-    
+  
     output$downloadSessionInfo <- downloadHandler(
       filename = "sessionInfo.txt",
       content = function(con) {
@@ -331,12 +334,12 @@ server <- function(input, output, session) {
                                                            downloadButton(outputId="downloadTtest", label="Download test results")
                                                          )
                                                          ),
-                                                  tabPanel(title="Session Info",
-                                                      fluidPage(
-                                                          verbatimTextOutput("sessionInfo"),
-                                                          downloadButton(outputId="downloadSessionInfo", label="Download session info")
-                                                               )
-                                                          )
+                                                tabPanel(title="Vignette",HTML(vignette_text)),
+
+                                                tabPanel(title="Session Info",
+                                                        verbatimTextOutput("sessionInfo"),
+                                                        downloadButton(outputId="downloadSessionInfo", label="Download session info")
+                                                )
                                                 
                                                 )
 
