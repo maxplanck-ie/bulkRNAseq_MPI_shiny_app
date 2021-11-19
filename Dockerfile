@@ -9,6 +9,7 @@ RUN install2.r -e shiny shinydashboard data.table rhandsontable littler BiocMana
 RUN /usr/local/lib/R/site-library/littler/examples/installBioc.r limma edgeR
 RUN install2.r -e dplyr
 RUN install2.r -e gplots
+RUN install2.r -e ggplot2
 
 RUN rm -rf /tmp/downloaded_packages
 

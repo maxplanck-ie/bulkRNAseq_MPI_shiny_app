@@ -263,7 +263,14 @@ server <- function(input, output, session) {
         restempW<-as.data.frame(restempW,stringsAsFactors=FALSE)
         
         output$ttest<-renderTable({restempW})
-        output$downloadTtest <- downloadHandler(filename = "t.test_results.xls",content=function(file) {write.table(restempW,file,row.names = FALSE,sep="\t",quote=FALSE,dec = ",")})
+
+        output$downloadTtest <- downloadHandler(
+          filename = "t.test_results.xls",
+          contentType = "text/csv",
+          content = function(file) {
+            write.table(restempW, file, row.names = FALSE,sep="\t",quote=FALSE,dec = ",")
+          }
+        )
 
         })  ##end of observe          
         
