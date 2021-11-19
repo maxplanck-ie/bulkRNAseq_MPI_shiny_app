@@ -1,0 +1,4 @@
+docker stop rna_inspector
+docker rm rna_inspector
+docker build -t rna_inspector  .
+docker run -d -p 2525:2525 --privileged --name rna_inspector rna_inspector
